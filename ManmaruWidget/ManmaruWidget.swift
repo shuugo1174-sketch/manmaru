@@ -14,7 +14,7 @@ struct ManmaruConfigurationIntent: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "まんまるの設定"
     static var description = IntentDescription("widget.json のURLを貼ると、App Groups が使えないときでも動くよ。")
 
-    @Parameter(title: "JSONのURL", description: IntentDescription("widget.json のURL。空っぽでもOK（そのときはアプリのキャッシュを使うよ）。"), default: "")
+    @Parameter(title: "JSONのURL", description: "widget.json のURL。空っぽでもOK（そのときはアプリのキャッシュを使うよ）。", default: "")
     var jsonUrl: String
 }
 
@@ -29,6 +29,9 @@ struct ManmaruEntry: TimelineEntry {
 // AppIntentConfiguration を使うので、IntentTimelineProvider ではなく
 // AppIntentTimelineProvider にする（古い方だとビルドが通らない）。
 struct ManmaruProvider: AppIntentTimelineProvider {
+    typealias Entry = ManmaruEntry
+    typealias Intent = ManmaruConfigurationIntent
+
     func placeholder(in context: Context) -> ManmaruEntry {
         ManmaruEntry(date: Date(), feed: nil, trackerURL: nil)
     }
