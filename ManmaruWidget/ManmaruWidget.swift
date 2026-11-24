@@ -26,7 +26,9 @@ struct ManmaruEntry: TimelineEntry {
 }
 
 // MARK: - プロバイダ
-struct ManmaruProvider: IntentTimelineProvider {
+// AppIntentConfiguration を使うので、IntentTimelineProvider ではなく
+// AppIntentTimelineProvider にする（古い方だとビルドが通らない）。
+struct ManmaruProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> ManmaruEntry {
         ManmaruEntry(date: Date(), feed: nil, trackerURL: nil)
     }
