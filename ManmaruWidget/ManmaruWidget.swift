@@ -36,11 +36,11 @@ struct ManmaruProvider: AppIntentTimelineProvider {
         ManmaruEntry(date: Date(), feed: nil, trackerURL: nil)
     }
 
-    func getSnapshot(for configuration: ManmaruConfigurationIntent, in context: Context) async -> ManmaruEntry {
+    func snapshot(for configuration: ManmaruConfigurationIntent, in context: Context) async -> ManmaruEntry {
         await loadEntry(configuration: configuration)
     }
 
-    func getTimeline(for configuration: ManmaruConfigurationIntent, in context: Context) async -> Timeline<ManmaruEntry> {
+    func timeline(for configuration: ManmaruConfigurationIntent, in context: Context) async -> Timeline<ManmaruEntry> {
         let entry = await loadEntry(configuration: configuration)
         // 15分ごとに更新する
         let next = Date().addingTimeInterval(15 * 60)
