@@ -9,6 +9,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install XcodeGen
         run: brew install xcodegen
+      - name: Resize app icon to 1024x1024
+        # 元の AppIcon.png は 1600x1600。iOS は 1024x1024 を欲しがるので、ビルドの前に縮める。
+        run: sips -z 1024 1024 Manmaru/Assets.xcassets/AppIcon.appiconset/AppIcon.png
       - name: Generate Xcode project
         run: xcodegen generate
       - name: Build (unsigned)
