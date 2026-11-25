@@ -42,8 +42,11 @@ jobs:
           test "$(plutil -extract CFBundleIdentifier raw "$APPPL")" = "com.shugo.manmaru"
           test "$(plutil -extract CFBundleIdentifier raw "$WPL")" = "com.shugo.manmaru.widget"
           echo "OK: ウィジェット入り"
+          test -f Payload/Manmaru.app/Assets.car || { echo "ERROR: アプリに画像（Assets.car）がない"; exit 1; }
+          test -f Payload/Manmaru.app/PlugIns/ManmaruWidget.appex/Assets.car || { echo "ERROR: ウィジェットに画像（Assets.car）がない"; exit 1; }
+          echo "OK: 画像入り"
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Manmaru-unsigned-v3
+          name: Manmaru-unsigned-v4
           path: Manmaru-unsigned.ipa
