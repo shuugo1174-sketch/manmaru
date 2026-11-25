@@ -14,8 +14,8 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - Manmaru/App
-    resources:
-      - Manmaru/Assets.xcassets
+      # 画像（XcodeGen に resources: というキーはない。sources に入れると自動で画像として入る）
+      - path: Manmaru/Assets.xcassets
     # 注意：XcodeGen は info.path の plist をビルドのたびに作り直す（上書きする）。
     # だから必要なキーは plist ではなく、ここの properties に書く。
     info:
@@ -61,8 +61,8 @@ targets:
       - path: Manmaru/App/TrackerFeed.swift
       # 共有：ライブアクティビティの型（アプリと同じファイルを使う）
       - path: Manmaru/App/LiveActivityManager.swift
-    resources:
-      - Manmaru/Assets.xcassets
+      # 画像（アプリと同じものを使う）
+      - path: Manmaru/Assets.xcassets
     # ここの NSExtension がないと、iOS がウィジェットとして認めない（Sideloadly の
     # 「extensionDictionary must be set」エラーになる）。plist ではなく properties に書く。
     info:
