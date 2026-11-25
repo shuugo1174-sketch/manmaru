@@ -1,6 +1,7 @@
 name: iOS Build
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # 手動で実行する
+
 jobs:
   build:
     runs-on: macos-latest
@@ -25,8 +26,24 @@ jobs:
           mkdir -p Payload
           cp -r "$APP" Payload/
           zip -r Manmaru-unsigned.ipa Payload
+      - name: Check widget is inside (NSExtension)
+        run: |
+          set -e
+          rm -rf check && mkdir check && cd check
+          unzip -q ../Manmaru-unsigned.ipa
+          APPPL=Payload/Manmaru.app/Info.plist
+          WPL=Payload/Manmaru.app/PlugIns/ManmaruWidget.appex/Info.plist
+          test -f "$WPL" || { echo "ERROR: ManmaruWidget.appex がない"; exit 1; }
+          echo "app id:    $(plutil -extract CFBundleIdentifier raw "$APPPL")"
+          echo "widget id: $(plutil -extract CFBundleIdentifier raw "$WPL")"
+          EP=$(plutil -extract NSExtension.NSExtensionPointIdentifier raw "$WPL")
+          echo "NSExtensionPointIdentifier: $EP"
+          test "$EP" = "com.apple.widgetkit-extension" || { echo "ERROR: NSExtension がない"; exit 1; }
+          test "$(plutil -extract CFBundleIdentifier raw "$APPPL")" = "com.shugo.manmaru"
+          test "$(plutil -extract CFBundleIdentifier raw "$WPL")" = "com.shugo.manmaru.widget"
+          echo "OK: ウィジェット入り"
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Manmaru-unsigned
+          name: Manmaru-unsigned-v3
           path: Manmaru-unsigned.ipa
