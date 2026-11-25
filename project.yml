@@ -16,14 +16,33 @@ targets:
       - Manmaru/App
     resources:
       - Manmaru/Assets.xcassets
+    # 注意：XcodeGen は info.path の plist をビルドのたびに作り直す（上書きする）。
+    # だから必要なキーは plist ではなく、ここの properties に書く。
     info:
       path: Manmaru/Info.plist
+      properties:
+        CFBundleDevelopmentRegion: ja
+        CFBundleDisplayName: "まんまる"
+        LSRequiresIPhoneOS: true
+        NSSupportsLiveActivities: true
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
     entitlements:
       path: Manmaru/Manmaru.entitlements
     settings:
       base:
         SWIFT_VERSION: "5.0"
+        # 中身の名前は英語（Manmaru.app）。ホーム画面の名前は CFBundleDisplayName の「まんまる」。
         PRODUCT_NAME: "Manmaru"
+        # bundleId: だけだと XcodeGen が com.shugo.Manmaru にしてしまうので、ここでも決める
+        PRODUCT_BUNDLE_IDENTIFIER: com.shugo.manmaru
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         IPHONEOS_DEPLOYMENT_TARGET: "17.0"
@@ -44,14 +63,22 @@ targets:
       - path: Manmaru/App/LiveActivityManager.swift
     resources:
       - Manmaru/Assets.xcassets
+    # ここの NSExtension がないと、iOS がウィジェットとして認めない（Sideloadly の
+    # 「extensionDictionary must be set」エラーになる）。plist ではなく properties に書く。
     info:
       path: ManmaruWidget/Info.plist
+      properties:
+        CFBundleDevelopmentRegion: ja
+        CFBundleDisplayName: "まんまる"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
       path: ManmaruWidget/ManmaruWidget.entitlements
     settings:
       base:
         SWIFT_VERSION: "5.0"
         PRODUCT_NAME: "ManmaruWidget"
+        PRODUCT_BUNDLE_IDENTIFIER: com.shugo.manmaru.widget
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         IPHONEOS_DEPLOYMENT_TARGET: "17.0"
