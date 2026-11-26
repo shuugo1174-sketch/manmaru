@@ -12,6 +12,11 @@ enum AppGroup {
     static let trackerUrlKey = "trackerUrl"
     static let cachedJsonKey = "cachedWidgetJson"
     static let lastSeenLevelKey = "lastSeenLevel"
+    // アプリがHealthKitから読んだ今日の歩数（ウィジェット用）
+    static let todayStepsKey = "todaySteps"
+    static let todayStepsDateKey = "todayStepsDate"
+    // 上のバー（ライブアクティビティ）を出しておきたいか
+    static let liveActivityWantedKey = "liveActivityWanted"
 
     static var defaults: UserDefaults? {
         UserDefaults(suiteName: suiteName) ?? .standard
@@ -43,6 +48,125 @@ struct TrackerDaySummary: Codable, Equatable {
     }
 }
 
+// 体のデータ（トラッカーが入れる。どれも無くてもいい）
+struct TrackerHealth: Codable, Equatable {
+    var date: String?
+    var steps: Int?
+    var calories: Int?
+    var calorieLimit: Int?
+    var weightKg: Double?
+    var bedtime: String?
+    var lateNight: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+        case date, steps, calories, calorieLimit, weightKg, bedtime, lateNight
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        date = try? values.decodeIfPresent(String.self, forKey: .date)
+        steps = try? values.decodeIfPresent(Int.self, forKey: .steps)
+        calories = try? values.decodeIfPresent(Int.self, forKey: .calories)
+        calorieLimit = try? values.decodeIfPresent(Int.self, forKey: .calorieLimit)
+        weightKg = try? values.decodeIfPresent(Double.self, forKey: .weightKg)
+        bedtime = try? values.decodeIfPresent(String.self, forKey: .bedtime)
+        lateNight = try? values.decodeIfPresent(Bool.self, forKey: .lateNight)
+    }
+
+    // 寝た時間が 0:00〜4:59 なら夜更かし
+    var isLateNight: Bool {
+        if lateNight == true { return true }
+        guard let bedtime, let hour = Int(bedtime.split(separator: ":").first ?? "") else { return false }
+        return hour >= 0 && hour < 5
+    }
+
+    var isOverCalories: Bool {
+        guard let calories else { return false }
+        return calories > (calorieLimit ?? 2200)
+    }
+}
+
+// 週の振り返りの材料（トラッカーが入れる。どれも無くてもいい）
+struct TrackerWeek: Codable, Equatable {
+    var from: String?
+    var to: String?
+    var tasksDone: Int?
+    var tasksTotal: Int?
+    var plusEx: Int?
+    var doneOften: [String]?
+    var missedOften: [String]?
+    var parameterGains: [String: Int]?
+    var stepsAvg: Int?
+    var weightChangeKg: Double?
+    var overCalorieDays: Int?
+    var lateNightDays: Int?
+    var chatNotes: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case from, to, tasksDone, tasksTotal, plusEx, doneOften, missedOften
+        case parameterGains, stepsAvg, weightChangeKg, overCalorieDays, lateNightDays, chatNotes
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        from = try? values.decodeIfPresent(String.self, forKey: .from)
+        to = try? values.decodeIfPresent(String.self, forKey: .to)
+        tasksDone = try? values.decodeIfPresent(Int.self, forKey: .tasksDone)
+        tasksTotal = try? values.decodeIfPresent(Int.self, forKey: .tasksTotal)
+        plusEx = try? values.decodeIfPresent(Int.self, forKey: .plusEx)
+        doneOften = try? values.decodeIfPresent([String].self, forKey: .doneOften)
+        missedOften = try? values.decodeIfPresent([String].self, forKey: .missedOften)
+        parameterGains = try? values.decodeIfPresent([String: Int].self, forKey: .parameterGains)
+        stepsAvg = try? values.decodeIfPresent(Int.self, forKey: .stepsAvg)
+        weightChangeKg = try? values.decodeIfPresent(Double.self, forKey: .weightChangeKg)
+        overCalorieDays = try? values.decodeIfPresent(Int.self, forKey: .overCalorieDays)
+        lateNightDays = try? values.decodeIfPresent(Int.self, forKey: .lateNightDays)
+        chatNotes = try? values.decodeIfPresent(String.self, forKey: .chatNotes)
+    }
+
+    // 振り返りを保存するときの名前
+    var cacheKey: String { "weeklyReview." + (from ?? "") + "_" + (to ?? "") }
+}
+
+// まんまるの気もち。責めない。悲しむだけ。
+enum ManmaruMood: Equatable {
+    case normal
+    case happy
+    case sleepySad
+    case worried
+}
+
+// 歩数のEXルール（トラッカーと同じ。表示だけ）
+enum StepsRule {
+    static let goals = [10_000, 15_000, 20_000]
+
+    static func ex(for steps: Int) -> Int {
+        switch steps {
+        case 20_000...: return 30
+        case 15_000..<20_000: return 20
+        case 10_000..<15_000: return 10
+        case 5_000..<10_000: return 5
+        default: return 0
+        }
+    }
+
+    // 次の目標ライン（全部こえたら nil）
+    static func nextGoal(after steps: Int) -> Int? {
+        ([5_000] + goals).first { steps < $0 }
+    }
+
+    // 今日の歩数：アプリが今日読んだ値 → 無ければJSONの値
+    static func todaySteps(feed: TrackerFeed?) -> Int? {
+        let defaults = AppGroup.defaults
+        if let saved = defaults?.object(forKey: AppGroup.todayStepsDateKey) as? Date,
+           Calendar.current.isDateInToday(saved),
+           defaults?.object(forKey: AppGroup.todayStepsKey) != nil {
+            return defaults?.integer(forKey: AppGroup.todayStepsKey)
+        }
+        return feed?.health?.steps
+    }
+}
+
 struct TrackerFeed: Codable, Equatable {
     var version: Int = 1
     var date: String = ""
@@ -61,6 +185,8 @@ struct TrackerFeed: Codable, Equatable {
     var todayPlusEx: Int = 0
     var todayMinusEx: Int = 0
     var yesterday: TrackerDaySummary?
+    var health: TrackerHealth?
+    var week: TrackerWeek?
     var characterImageUrl: String?
     var characterImages: [TrackerCharacterImage] = []
     var updatedAt: String = ""
@@ -70,7 +196,7 @@ struct TrackerFeed: Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case version, date, level, stage, stageName, totalEx, exInLevel
         case exToNextLevel, progressPercent, friendship, parameters, tasks
-        case tasksDone, tasksTotal, todayPlusEx, todayMinusEx, yesterday
+        case tasksDone, tasksTotal, todayPlusEx, todayMinusEx, yesterday, health, week
         case characterImageUrl, characterImages, updatedAt
     }
 
@@ -94,6 +220,8 @@ struct TrackerFeed: Codable, Equatable {
         todayPlusEx = try values.decodeIfPresent(Int.self, forKey: .todayPlusEx) ?? 0
         todayMinusEx = try values.decodeIfPresent(Int.self, forKey: .todayMinusEx) ?? 0
         yesterday = (try? values.decodeIfPresent(TrackerDaySummary.self, forKey: .yesterday)) ?? nil
+        health = (try? values.decodeIfPresent(TrackerHealth.self, forKey: .health)) ?? nil
+        week = (try? values.decodeIfPresent(TrackerWeek.self, forKey: .week)) ?? nil
         characterImageUrl = try values.decodeIfPresent(String.self, forKey: .characterImageUrl)
         characterImages = try values.decodeIfPresent([TrackerCharacterImage].self, forKey: .characterImages) ?? []
         updatedAt = try values.decodeIfPresent(String.self, forKey: .updatedAt) ?? ""
@@ -115,6 +243,14 @@ struct TrackerFeed: Codable, Equatable {
         }
         return DaySummaryDisplay(label: "きょう", plusEx: todayPlusEx,
                                  done: tasksDone, total: tasksTotal, isYesterday: false)
+    }
+
+    // 気もちの決め方：夜更かし → 食べすぎ → きのう全部できた → ふつう
+    var mood: ManmaruMood {
+        if health?.isLateNight == true { return .sleepySad }
+        if health?.isOverCalories == true { return .worried }
+        if let yesterday, yesterday.tasksTotal > 0, yesterday.tasksDone >= yesterday.tasksTotal { return .happy }
+        return .normal
     }
 
     // exToNextLevelは、次のレベルまでの残りEX。
@@ -441,6 +577,102 @@ struct ManmaruCharacterImage: View {
                 .strokeBorder(ManmaruPalette.yellow, lineWidth: 2)
         }
         .accessibilityLabel(ManmaruStage.name(level: level))
+    }
+}
+
+// 上のバー（ライブアクティビティ）用の小さい絵。大きい絵だと表示されないので、160pxの絵を使う。
+struct ManmaruSmallCharacterImage: View {
+    var level: Int
+    var size: CGFloat
+    var framed: Bool = true
+
+    private var corner: CGFloat { size * 0.24 }
+
+    var body: some View {
+        let name = ManmaruStage.imageName(level: level) + "_small"
+        ZStack {
+            if framed { ManmaruPalette.cream }
+            Image(name)
+                .resizable()
+                .scaledToFit()
+                .padding(framed ? size * 0.04 : 0)
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: framed ? corner : 0))
+    }
+}
+
+// 気もちの小さい印（ウィジェット・上のバー用。動かない）
+struct ManmaruMoodBadge: View {
+    var mood: ManmaruMood
+    var size: CGFloat = 14
+
+    var body: some View {
+        switch mood {
+        case .sleepySad:
+            Image(systemName: "moon.zzz.fill").font(.system(size: size)).foregroundStyle(ManmaruPalette.caption)
+        case .worried:
+            Image(systemName: "drop.fill").font(.system(size: size)).foregroundStyle(Color(red: 0.45, green: 0.7, blue: 1))
+        case .happy:
+            Image(systemName: "sparkles").font(.system(size: size)).foregroundStyle(ManmaruPalette.yellow)
+        case .normal:
+            EmptyView()
+        }
+    }
+}
+
+// 気もちの決まったひとこと（AIが使えないときと、ウィジェット用）
+enum ManmaruMoodLine {
+    static func short(_ mood: ManmaruMood) -> String? {
+        switch mood {
+        case .sleepySad: return "ねむい…もう寝ようよ"
+        case .worried: return "お腹、大丈夫？"
+        case .happy: return "きのうはぜんぶできたね！"
+        case .normal: return nil
+        }
+    }
+}
+
+// 歩数のバー。20,000歩までを1本にして、10,000 / 15,000 の所に線を引く。
+struct StepsGoalBar: View {
+    var steps: Int
+    var height: CGFloat = 8
+    var showLabels = true
+
+    private let maxSteps = 20_000.0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            GeometryReader { geometry in
+                let width = geometry.size.width
+                ZStack(alignment: .leading) {
+                    Capsule().fill(ManmaruPalette.background)
+                    Capsule().fill(ManmaruPalette.green)
+                        .frame(width: width * CGFloat(min(Double(steps) / maxSteps, 1)))
+                    ForEach([10_000, 15_000], id: \.self) { goal in
+                        Rectangle()
+                            .fill(Color.white.opacity(0.7))
+                            .frame(width: 2, height: height + 4)
+                            .offset(x: width * CGFloat(Double(goal) / maxSteps) - 1)
+                    }
+                }
+            }
+            .frame(height: height)
+            if showLabels {
+                GeometryReader { geometry in
+                    ForEach(StepsRule.goals, id: \.self) { goal in
+                        Text("\(goal / 1000)k")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(steps >= goal ? ManmaruPalette.yellow : ManmaruPalette.caption)
+                            .fixedSize()
+                            .position(x: min(geometry.size.width * CGFloat(Double(goal) / maxSteps), geometry.size.width - 8), y: 6)
+                    }
+                }
+                .frame(height: 12)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("歩数 \(steps)歩")
     }
 }
 

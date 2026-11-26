@@ -37,10 +37,41 @@ final class LiveActivityManager: ObservableObject {
 
     var isActive: Bool { activity != nil }
 
+    /// 上のバーにまんまるを出しておきたいか（「島にキャラを出す」でオン、「島からしまう」でオフ）
+    var isWanted: Bool {
+        get { UserDefaults.standard.bool(forKey: AppGroup.liveActivityWantedKey) }
+        set { UserDefaults.standard.set(newValue, forKey: AppGroup.liveActivityWantedKey) }
+    }
+
+    /// アプリを開いたときに呼ぶ。前のライブアクティビティが残っていればつなぎ直す。
+    /// 8時間で消えていたら（iOSの決まり）、出しておきたいときは出し直す。
+    func restoreIfWanted(feed: TrackerFeed?) {
+        if activity == nil {
+            let running = Activity<ManmaruAttributes>.activities.filter { $0.activityState == .active }
+            if let first = running.first {
+                activity = first
+                startMoodTimer()
+                // 2つ以上あったら、残りは消す
+                for extra in running.dropFirst() {
+                    Task { await extra.end(nil, dismissalPolicy: .immediate) }
+                }
+            }
+        } else if let current = activity, current.activityState != .active {
+            activity = nil
+        }
+        guard let feed else { return }
+        if activity != nil {
+            update(feed: feed)
+        } else if isWanted {
+            start(feed: feed)
+        }
+    }
+
     /// ライブアクティビティを始める。すでにあれば何もしない。
     @discardableResult
     func start(feed: TrackerFeed) -> Bool {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return false }
+        isWanted = true
         if activity != nil { return true }
         currentFeed = feed
         let attributes = ManmaruAttributes(
@@ -86,6 +117,7 @@ final class LiveActivityManager: ObservableObject {
     }
 
     func stop() {
+        isWanted = false
         moodTimer?.invalidate()
         moodTimer = nil
         guard let activity else { return }

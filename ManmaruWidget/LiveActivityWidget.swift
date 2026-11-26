@@ -6,7 +6,7 @@ struct ManmaruLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: ManmaruAttributes.self) { context in
             HStack(spacing: 14) {
-                ManmaruCharacterImage(level: context.state.level, size: 72)
+                ManmaruSmallCharacterImage(level: context.state.level, size: 72)
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text("Lv.\(context.state.level)")
@@ -31,7 +31,7 @@ struct ManmaruLiveActivityWidget: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    ManmaruCharacterImage(level: context.state.level, size: 52)
+                    ManmaruSmallCharacterImage(level: context.state.level, size: 52)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     Text("Lv.\(context.state.level)")
@@ -42,7 +42,7 @@ struct ManmaruLiveActivityWidget: Widget {
                     VStack(spacing: 5) {
                         Text(ManmaruStage.name(level: context.state.level))
                             .foregroundStyle(ManmaruPalette.yellow)
-                        Text("\(context.state.tasksDone)/\(context.state.tasksTotal) できた")
+                        Text("きょうのタスク \(context.state.tasksDone)/\(context.state.tasksTotal)")
                             .foregroundStyle(.white)
                         Text(moodText(for: context.state.mood))
                             .foregroundStyle(ManmaruPalette.caption)
@@ -58,13 +58,13 @@ struct ManmaruLiveActivityWidget: Widget {
                     }
                 }
             } compactLeading: {
-                ManmaruCharacterImage(level: context.state.level, size: 22)
+                ManmaruIslandFace(level: context.state.level, size: 24)
             } compactTrailing: {
                 Text("Lv.\(context.state.level)")
                     .font(.system(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(ManmaruPalette.yellow)
             } minimal: {
-                ManmaruCharacterImage(level: context.state.level, size: 22)
+                ManmaruIslandFace(level: context.state.level, size: 24)
             }
             .keylineTint(ManmaruPalette.yellow)
         }
@@ -87,5 +87,21 @@ struct ManmaruLiveActivityWidget: Widget {
         case "peek": return "ひょっこり！"
         default: return "待ってるよ"
         }
+    }
+}
+
+// 上のバーが小さいときの、まんまるの顔。小さい絵の上の方を丸く切って見せる。
+struct ManmaruIslandFace: View {
+    var level: Int
+    var size: CGFloat
+
+    var body: some View {
+        Image(ManmaruStage.imageName(level: level) + "_small")
+            .resizable()
+            .scaledToFill()
+            .frame(width: size, height: size)
+            .scaleEffect(ManmaruStage.number(level: level) == 1 ? 1.45 : 1.25, anchor: UnitPoint(x: 0.5, y: 0.12))
+            .frame(width: size, height: size)
+            .clipShape(Circle())
     }
 }

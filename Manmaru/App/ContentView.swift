@@ -13,9 +13,11 @@ struct ContentView: View {
                     if let feed = store.feed {
                         CharacterPlaygroundView(feed: feed, justLeveledUp: store.celebration != nil)
                         levelCard(feed)
+                        StepsCard(feed: feed)
                         friendshipCard(feed)
                         parameterLink(feed)
                         tasksCard(feed)
+                        aiLinks(feed)
                         if let updated = store.lastUpdated {
                             Text("最終更新：\(updated.formatted(date: .abbreviated, time: .shortened))")
                                 .font(.system(size: 12, weight: .medium, design: .rounded))
@@ -49,6 +51,7 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showSettings) { SettingsView() }
             .onAppear { liveActivityOn = LiveActivityManager.shared.isActive }
+            .onChange(of: store.lastUpdated) { _, _ in liveActivityOn = LiveActivityManager.shared.isActive }
             .onChange(of: showSettings) { _, isPresented in
                 if !isPresented { liveActivityOn = LiveActivityManager.shared.isActive }
             }
@@ -168,6 +171,46 @@ struct ContentView: View {
         .buttonStyle(.plain)
     }
 
+    // AIの機能：目標を分ける・週の振り返り
+    private func aiLinks(_ feed: TrackerFeed) -> some View {
+        VStack(spacing: 12) {
+            NavigationLink {
+                GoalSplitterView()
+            } label: {
+                linkRow(icon: "wand.and.stars", title: "目標を分ける", caption: "大きい目標を「きょうはこれだけ」に")
+            }
+            .buttonStyle(.plain)
+            if let week = feed.week {
+                NavigationLink {
+                    WeeklyReviewView(week: week, feed: feed)
+                } label: {
+                    linkRow(icon: "book.closed.fill", title: "週の振り返り", caption: "まんまるが今週をふり返るよ")
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func linkRow(icon: String, title: String, caption: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 22))
+                .foregroundStyle(ManmaruPalette.yellow)
+                .frame(width: 32)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                Text(caption)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(ManmaruPalette.caption)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .foregroundStyle(ManmaruPalette.yellow)
+        }
+        .manmaruCard()
+    }
+
     private func tasksCard(_ feed: TrackerFeed) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
@@ -255,7 +298,7 @@ struct ContentView: View {
         } else if let feed = store.feed {
             let ok = LiveActivityManager.shared.start(feed: feed)
             liveActivityOn = ok
-            liveActivityMessage = ok ? "島に出したよ。8時間で終わるよ。" : "島に出せなかったよ。"
+            liveActivityMessage = ok ? "上のバーに出したよ。8時間で消えるよ。アプリを開くと出し直すよ。" : "島に出せなかったよ。設定 → まんまる → ライブアクティビティ がオンか見てね。"
         }
     }
 }

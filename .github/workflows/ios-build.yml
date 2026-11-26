@@ -28,6 +28,11 @@ jobs:
           APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
           mkdir -p Payload
           cp -r "$APP" Payload/
+          # 署名はしないが、entitlements（App Group・HealthKit）を中に入れるため ad-hoc で印をつける。
+          # Sideloadly が自分の Apple ID で署名し直すときに、この entitlements を使う。
+          codesign -f -s - --entitlements ManmaruWidget/ManmaruWidget.entitlements Payload/Manmaru.app/PlugIns/ManmaruWidget.appex
+          codesign -f -s - --entitlements Manmaru/Manmaru.entitlements Payload/Manmaru.app
+          codesign -d --entitlements - Payload/Manmaru.app
           zip -r Manmaru-unsigned.ipa Payload
       - name: Check widget is inside (NSExtension)
         run: |
@@ -51,5 +56,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Manmaru-unsigned-v5
+          name: Manmaru-unsigned-v6
           path: Manmaru-unsigned.ipa

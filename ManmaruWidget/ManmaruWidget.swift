@@ -116,6 +116,7 @@ struct ManmaruWidgetEntryView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 8) {
                         ManmaruCharacterImage(level: feed.level, size: 50)
+                            .overlay(alignment: .topTrailing) { ManmaruMoodBadge(mood: feed.mood, size: 12).offset(x: 4, y: -4) }
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Lv.\(feed.level)")
                                 .font(.system(size: 26, weight: .heavy, design: .rounded))
@@ -130,9 +131,14 @@ struct ManmaruWidgetEntryView: View {
                     Text("あと \(feed.exRemaining) EX")
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(ManmaruPalette.caption)
-                    Text("なつき度 \(feed.friendship) / 255")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                    ManmaruProgressBar(value: feed.friendshipProgress, tint: ManmaruPalette.pink, height: 4)
+                    if let steps = StepsRule.todaySteps(feed: feed) {
+                        // 歩数があるときは、なつき度の代わりに歩数を出す
+                        stepsRow(steps, fontSize: 10)
+                    } else {
+                        Text("なつき度 \(feed.friendship) / 255")
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                        ManmaruProgressBar(value: feed.friendshipProgress, tint: ManmaruPalette.pink, height: 4)
+                    }
                     todayText(feed)
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .lineLimit(1)
@@ -147,6 +153,7 @@ struct ManmaruWidgetEntryView: View {
             if let feed = entry.feed {
                 HStack(spacing: 14) {
                     ManmaruCharacterImage(level: feed.level, size: 96)
+                        .overlay(alignment: .topTrailing) { ManmaruMoodBadge(mood: feed.mood, size: 16).offset(x: 5, y: -5) }
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Text("Lv.\(feed.level)")
@@ -158,14 +165,19 @@ struct ManmaruWidgetEntryView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         ManmaruProgressBar(value: feed.progress, height: 8)
-                        Text("\(feed.exInLevel) / \(feed.exNeeded) EX · あと\(feed.exRemaining)")
+                        // 悲しいときは、まんまるのひとことを出す（責めない）
+                        Text(moodOrExLine(feed))
                             .font(.system(size: 11, weight: .medium, design: .rounded))
                             .foregroundStyle(ManmaruPalette.caption)
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
-                        Text("なつき度 \(feed.friendship) / 255")
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                        ManmaruProgressBar(value: feed.friendshipProgress, tint: ManmaruPalette.pink, height: 5)
+                        if let steps = StepsRule.todaySteps(feed: feed) {
+                            stepsRow(steps, fontSize: 12)
+                        } else {
+                            Text("なつき度 \(feed.friendship) / 255")
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                            ManmaruProgressBar(value: feed.friendshipProgress, tint: ManmaruPalette.pink, height: 5)
+                        }
                         todayText(feed)
                             .font(.system(size: 12, weight: .bold, design: .rounded))
                             .lineLimit(1)
@@ -173,6 +185,30 @@ struct ManmaruWidgetEntryView: View {
                     }
                 }
             } else { emptyView }
+        }
+    }
+
+    private func moodOrExLine(_ feed: TrackerFeed) -> String {
+        if feed.mood == .sleepySad || feed.mood == .worried, let line = ManmaruMoodLine.short(feed.mood) {
+            return line
+        }
+        return "\(feed.exInLevel) / \(feed.exNeeded) EX · あと\(feed.exRemaining)"
+    }
+
+    // 歩数の行：くつのマーク＋歩数＋細いバー（10k/15k/20kの線）
+    private func stepsRow(_ steps: Int, fontSize: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                Image(systemName: "figure.walk")
+                Text("\(steps.formatted()) 歩")
+                Spacer(minLength: 2)
+                Text("+\(StepsRule.ex(for: steps)) EX")
+                    .foregroundStyle(ManmaruPalette.green)
+            }
+            .font(.system(size: fontSize, weight: .bold, design: .rounded))
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            StepsGoalBar(steps: steps, height: 4, showLabels: false)
         }
     }
 

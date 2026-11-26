@@ -2,10 +2,25 @@ import SwiftUI
 
 // 結果からセリフを選ぶ。同じセリフは続けない。
 enum ManmaruSpeech {
-    static func line(feed: TrackerFeed, previous: String, justLeveledUp: Bool) -> String {
+    static func line(feed: TrackerFeed, previous: String, justLeveledUp: Bool, mood: ManmaruMood? = nil) -> String {
         let hour = Calendar.current.component(.hour, from: Date())
         var lines: [String]
-        if justLeveledUp {
+        let currentMood = mood ?? feed.mood
+        if !justLeveledUp && currentMood == .sleepySad {
+            // 夜更かし：眠そうに悲しむ。責めない。
+            lines = [
+                "ゆうべ遅かったね…ぼく、ねむいよ。きょうは早めに寝ようよ。",
+                "ふあぁ…ねむい。大変だったんだね。今夜はもう寝ようよ。",
+                "夜ふかしすると、ぼくもしょんぼり…。もっと自分を大切にしなよ。"
+            ]
+        } else if !justLeveledUp && currentMood == .worried {
+            // 食べすぎ：しょんぼり。次にどうするかを一言だけ。
+            lines = [
+                "お腹、大丈夫？きょうはやさしいごはんにしよっか。",
+                "きのうはいっぱい食べたね…。大変な日だったのかな。お水を飲もうね。",
+                "ぼく、ちょっとしんぱい…。きょうはゆっくり歩いてみよっか。"
+            ]
+        } else if justLeveledUp {
             lines = [
                 "Lv.\(feed.level)になったよ！いっしょに成長したね！",
                 "レベルアップ！きょうは+\(feed.todayPlusEx) EX、ありがとう！"
@@ -39,7 +54,9 @@ enum ManmaruSpeech {
                 "いまLv.\(feed.level)！あと\(feed.exRemaining) EXでまた育つよ。"
             ]
         }
-        if !justLeveledUp {
+        if !justLeveledUp && (currentMood == .sleepySad || currentMood == .worried) {
+            // 悲しいときは、ほかの話を混ぜない
+        } else if !justLeveledUp {
             if feed.yesterday != nil {
                 if hour >= 5 && hour < 12 {
                     lines.append("おはよう！Lv.\(feed.level)のぼくと、自分のペースでね。")
@@ -66,9 +83,19 @@ struct CharacterPlaygroundView: View {
     var feed: TrackerFeed
     var justLeveledUp: Bool
 
+    @ObservedObject private var health = HealthSteps.shared
     @State private var speech = ""
     @State private var hopToken = 0
     @State private var isHappy = false
+    @State private var aiToken = 0
+    @State private var lastAIRequest = Date.distantPast
+
+    // JSONの気もちに、iPhoneの睡眠データ（ゆうべ遅かった）も足す
+    private var mood: ManmaruMood {
+        let fromFeed = feed.mood
+        if fromFeed == .normal || fromFeed == .happy, health.wasLateNight { return .sleepySad }
+        return fromFeed
+    }
 
     var body: some View {
         VStack(spacing: 18) {
@@ -89,17 +116,22 @@ struct CharacterPlaygroundView: View {
             .accessibilityElement(children: .combine)
 
             Button {
-                speak()
+                speak(useAI: true, force: true)
                 hopToken += 1
             } label: {
                 ManmaruCharacterImage(level: feed.level, size: 190)
+                    // 気もち：眠い＝少しうつむく、しんぱい＝少し小さく、うれしい＝キラキラ
+                    .rotationEffect(.degrees(mood == .sleepySad ? 6 : 0))
+                    .scaleEffect(mood == .worried ? 0.94 : 1)
+                    .saturation(mood == .sleepySad || mood == .worried ? 0.75 : 1)
+                    .overlay(alignment: .topTrailing) { moodOverlay }
                     .phaseAnimator([false, true]) { content, phase in
                         content
-                            .scaleEffect(reduceMotion ? 1 : (phase ? 1.025 : 0.985))
+                            .scaleEffect(reduceMotion ? 1 : (phase ? breathe.high : breathe.low))
                             .rotationEffect(.degrees(reduceMotion ? 0 : (phase ? 2 : -2)))
                             .offset(y: reduceMotion ? 0 : (phase ? -3 : 3))
                     } animation: { _ in
-                        .easeInOut(duration: 1.8)
+                        .easeInOut(duration: mood == .sleepySad ? 3.2 : 1.8)
                     }
                     .offset(y: isHappy && !reduceMotion ? -25 : 0)
                     .rotationEffect(.degrees(isHappy && !reduceMotion ? -8 : 0))
@@ -125,18 +157,60 @@ struct CharacterPlaygroundView: View {
         }
         .frame(maxWidth: .infinity)
         .manmaruCard()
-        .onAppear { speak() }
+        .onAppear { speak(useAI: true, force: false) }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { speak() }
+            if phase == .active { speak(useAI: true, force: false) }
         }
-        .onChange(of: feed) { _, _ in speak() }
+        .onChange(of: feed) { _, _ in speak(useAI: false, force: false) }
         .onChange(of: justLeveledUp) { _, value in
-            if value { speak() }
+            if value { speak(useAI: true, force: true) }
+        }
+        .task(id: aiToken) {
+            guard aiToken > 0 else { return }
+            let token = aiToken
+            if let line = await ManmaruAISpeech.line(feed: feed, mood: mood, justLeveledUp: justLeveledUp),
+               token == aiToken {
+                speech = line
+            }
         }
     }
 
-    private func speak() {
-        speech = ManmaruSpeech.line(feed: feed, previous: speech, justLeveledUp: justLeveledUp)
+    private var breathe: (low: CGFloat, high: CGFloat) {
+        mood == .sleepySad ? (0.99, 1.01) : (0.985, 1.025)
+    }
+
+    @ViewBuilder
+    private var moodOverlay: some View {
+        switch mood {
+        case .sleepySad:
+            Text("Zzz")
+                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                .foregroundStyle(ManmaruPalette.caption)
+                .padding(8)
+        case .worried:
+            Image(systemName: "drop.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(Color(red: 0.45, green: 0.7, blue: 1))
+                .padding(.top, 40)
+                .padding(.trailing, 30)
+        case .happy:
+            Image(systemName: "sparkles")
+                .font(.system(size: 26))
+                .foregroundStyle(ManmaruPalette.yellow)
+                .padding(6)
+        case .normal:
+            EmptyView()
+        }
+    }
+
+    /// まず決まったセリフをすぐ出す。AIが使えれば、できたらAIのセリフに変える。
+    private func speak(useAI: Bool, force: Bool) {
+        speech = ManmaruSpeech.line(feed: feed, previous: speech, justLeveledUp: justLeveledUp, mood: mood)
+        guard useAI, ManmaruAI.isAvailable else { return }
+        // 開くたびに何回も作らない（30秒に1回まで）。タップのときは毎回。
+        if !force && Date().timeIntervalSince(lastAIRequest) < 30 { return }
+        lastAIRequest = Date()
+        aiToken += 1
     }
 }
 

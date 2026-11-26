@@ -54,6 +54,19 @@ struct SettingsView: View {
                             .manmaruCard()
                     }
 
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("AIと歩数")
+                            .font(.system(size: 17, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                        Label(ManmaruAI.statusText, systemImage: ManmaruAI.isAvailable ? "checkmark.seal.fill" : "info.circle")
+                        Label(stepsStatusText, systemImage: "figure.walk")
+                        Text("AIはiPhoneの中だけで動くよ。データは外に送らないよ。")
+                    }
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(ManmaruPalette.caption)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .manmaruCard()
+
                     VStack(alignment: .leading, spacing: 12) {
                         Text("いまの保存")
                             .font(.system(size: 17, weight: .bold, design: .rounded))
@@ -88,6 +101,16 @@ struct SettingsView: View {
     private var savedURLText: String {
         let saved = store.jsonURLString
         return saved.isEmpty ? "未設定" : saved
+    }
+
+    private var stepsStatusText: String {
+        if let steps = HealthSteps.shared.todaySteps {
+            return "ヘルスケアから歩数を読めたよ（きょう \(steps)歩）。"
+        }
+        if !HealthSteps.shared.isAvailable {
+            return "ヘルスケアが使えないよ。トラッカーの歩数を出すね。"
+        }
+        return "歩数はまだ読めてないよ。設定 → ヘルスケア → データアクセス で、まんまるを許可してね。"
     }
 
     private var savedTrackerText: String {
