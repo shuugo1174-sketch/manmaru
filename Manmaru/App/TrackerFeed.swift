@@ -22,6 +22,27 @@ enum AppGroup {
     }
 }
 
+struct TrackerDaySummary: Codable, Equatable {
+    var date: String = ""
+    var tasksDone: Int = 0
+    var tasksTotal: Int = 0
+    var plusEx: Int = 0
+
+    init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case date, tasksDone, tasksTotal, plusEx
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        date = try values.decodeIfPresent(String.self, forKey: .date) ?? ""
+        tasksDone = try values.decodeIfPresent(Int.self, forKey: .tasksDone) ?? 0
+        tasksTotal = try values.decodeIfPresent(Int.self, forKey: .tasksTotal) ?? 0
+        plusEx = try values.decodeIfPresent(Int.self, forKey: .plusEx) ?? 0
+    }
+}
+
 struct TrackerFeed: Codable, Equatable {
     var version: Int = 1
     var date: String = ""
@@ -39,6 +60,7 @@ struct TrackerFeed: Codable, Equatable {
     var tasksTotal: Int = 0
     var todayPlusEx: Int = 0
     var todayMinusEx: Int = 0
+    var yesterday: TrackerDaySummary?
     var characterImageUrl: String?
     var characterImages: [TrackerCharacterImage] = []
     var updatedAt: String = ""
@@ -48,7 +70,7 @@ struct TrackerFeed: Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case version, date, level, stage, stageName, totalEx, exInLevel
         case exToNextLevel, progressPercent, friendship, parameters, tasks
-        case tasksDone, tasksTotal, todayPlusEx, todayMinusEx
+        case tasksDone, tasksTotal, todayPlusEx, todayMinusEx, yesterday
         case characterImageUrl, characterImages, updatedAt
     }
 
@@ -71,9 +93,28 @@ struct TrackerFeed: Codable, Equatable {
         tasksTotal = try values.decodeIfPresent(Int.self, forKey: .tasksTotal) ?? 0
         todayPlusEx = try values.decodeIfPresent(Int.self, forKey: .todayPlusEx) ?? 0
         todayMinusEx = try values.decodeIfPresent(Int.self, forKey: .todayMinusEx) ?? 0
+        yesterday = (try? values.decodeIfPresent(TrackerDaySummary.self, forKey: .yesterday)) ?? nil
         characterImageUrl = try values.decodeIfPresent(String.self, forKey: .characterImageUrl)
         characterImages = try values.decodeIfPresent([TrackerCharacterImage].self, forKey: .characterImages) ?? []
         updatedAt = try values.decodeIfPresent(String.self, forKey: .updatedAt) ?? ""
+    }
+
+    struct DaySummaryDisplay {
+        let label: String
+        let plusEx: Int
+        let done: Int
+        let total: Int
+        let isYesterday: Bool
+    }
+
+    var summaryDisplay: DaySummaryDisplay {
+        if let yesterday = yesterday {
+            return DaySummaryDisplay(label: "きのう", plusEx: yesterday.plusEx,
+                                     done: yesterday.tasksDone, total: yesterday.tasksTotal,
+                                     isYesterday: true)
+        }
+        return DaySummaryDisplay(label: "きょう", plusEx: todayPlusEx,
+                                 done: tasksDone, total: tasksTotal, isYesterday: false)
     }
 
     // exToNextLevelは、次のレベルまでの残りEX。

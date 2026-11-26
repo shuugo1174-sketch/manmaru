@@ -1,6 +1,6 @@
 import SwiftUI
 
-// 今日の様子からセリフを選ぶ。同じセリフは続けない。
+// 結果からセリフを選ぶ。同じセリフは続けない。
 enum ManmaruSpeech {
     static func line(feed: TrackerFeed, previous: String, justLeveledUp: Bool) -> String {
         let hour = Calendar.current.component(.hour, from: Date())
@@ -15,6 +15,14 @@ enum ManmaruSpeech {
                 "あと\(feed.exRemaining) EXでレベルアップ！もう少し！",
                 "いまLv.\(feed.level)！次まであと\(feed.exRemaining) EXだよ。"
             ]
+        } else if let yesterday = feed.yesterday {
+            if yesterday.tasksTotal > 0 && yesterday.tasksDone >= yesterday.tasksTotal {
+                lines = ["きのうは\(yesterday.tasksDone)/\(yesterday.tasksTotal)ぜんぶできた！+\(yesterday.plusEx) EX、すごい！"]
+            } else if yesterday.tasksDone > 0 {
+                lines = ["きのうは\(yesterday.tasksDone)/\(yesterday.tasksTotal)できたよ。+\(yesterday.plusEx) EX！"]
+            } else {
+                lines = ["きのうはお休みだったね。きょうはひとつ、いっしょに！"]
+            }
         } else if feed.tasksTotal > 0 && feed.tasksDone >= feed.tasksTotal {
             lines = [
                 "\(feed.tasksDone)/\(feed.tasksTotal)できた！ぜんぶ達成、おつかれさま！",
@@ -32,7 +40,15 @@ enum ManmaruSpeech {
             ]
         }
         if !justLeveledUp {
-            if hour >= 5 && hour < 12 {
+            if feed.yesterday != nil {
+                if hour >= 5 && hour < 12 {
+                    lines.append("おはよう！Lv.\(feed.level)のぼくと、自分のペースでね。")
+                } else if hour >= 20 || hour < 5 {
+                    lines.append("いまLv.\(feed.level)！夜はゆっくり休もうね。")
+                } else {
+                    lines.append("Lv.\(feed.level)のぼくと、午後もひとつずつ！")
+                }
+            } else if hour >= 5 && hour < 12 {
                 lines.append("おはよう！きょうの\(feed.tasksDone)/\(feed.tasksTotal)、自分のペースでね。")
             } else if hour >= 20 || hour < 5 {
                 lines.append("きょうは+\(feed.todayPlusEx) EX。夜はゆっくり休もうね。")

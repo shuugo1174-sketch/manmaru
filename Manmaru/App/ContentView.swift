@@ -119,9 +119,10 @@ struct ContentView: View {
     }
 
     private func todayLine(_ feed: TrackerFeed) -> some View {
-        (Text("きょう: ")
-            + Text("+\(feed.todayPlusEx) EX").foregroundColor(ManmaruPalette.green)
-            + Text(" (\(feed.tasksDone)/\(feed.tasksTotal) できた)"))
+        let summary = feed.summaryDisplay
+        return (Text("\(summary.label): ")
+            + Text("+\(summary.plusEx) EX").foregroundColor(ManmaruPalette.green)
+            + Text(" (\(summary.done)/\(summary.total) できた)"))
             .font(.system(size: 15, weight: .bold, design: .rounded))
     }
 

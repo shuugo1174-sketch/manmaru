@@ -177,8 +177,10 @@ struct ManmaruWidgetEntryView: View {
     }
 
     private func todayText(_ feed: TrackerFeed) -> Text {
-        Text("+\(feed.todayPlusEx) EX").foregroundColor(ManmaruPalette.green)
-            + Text(" (\(feed.tasksDone)/\(feed.tasksTotal) できた)")
+        let summary = feed.summaryDisplay
+        return Text("\(summary.label) ")
+            + Text("+\(summary.plusEx) EX").foregroundColor(ManmaruPalette.green)
+            + Text(" (\(summary.done)/\(summary.total) できた)")
     }
 
     private var accessoryCircular: some View {
