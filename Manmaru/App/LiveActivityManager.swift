@@ -1,5 +1,6 @@
 import ActivityKit
 import Foundation
+import Combine
 
 // MARK: - Dynamic Island のライブアクティビティ
 // 島の中にキャラ画像＋レベル。広げた表示はキャラ＋レベル＋EXバー＋タスクの進み具合。
@@ -42,7 +43,10 @@ final class LiveActivityManager: ObservableObject {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return false }
         if activity != nil { return true }
         currentFeed = feed
-        let attributes = ManmaruAttributes(stage: feed.stage, stageName: feed.stageName)
+        let attributes = ManmaruAttributes(
+            stage: ManmaruStage.number(level: feed.level),
+            stageName: ManmaruStage.name(level: feed.level)
+        )
         let state = ManmaruAttributes.ContentState(
             level: feed.level,
             totalEx: feed.totalEx,

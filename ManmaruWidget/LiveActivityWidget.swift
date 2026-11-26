@@ -2,71 +2,74 @@ import WidgetKit
 import SwiftUI
 import ActivityKit
 
-// MARK: - Dynamic Island の表示
-// ManmaruAttributes はアプリ側の LiveActivityManager.swift と同じファイルを使う
-// （project.yml でウィジェットターゲットにも同じファイルを入れている）。
-// ライブアクティビティはアプリから直接データを渡すので、App Group は要らない。
-
 struct ManmaruLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: ManmaruAttributes.self) { context in
-            // ロック画面の表示
-            HStack(spacing: 10) {
-                WidgetCharacterView(stage: context.attributes.stage, size: 44)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("まんまる Lv \(context.state.level)")
-                        .font(.headline)
-                    ProgressView(value: progress(of: context.state))
-                    Text("\(context.state.exInLevel) / \(exNeeded(of: context.state)) EX")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            HStack(spacing: 14) {
+                ManmaruCharacterImage(level: context.state.level, size: 72)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("Lv.\(context.state.level)")
+                            .font(.system(size: 30, weight: .heavy, design: .rounded))
+                        Text(ManmaruStage.name(level: context.state.level))
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .foregroundStyle(ManmaruPalette.caption)
+                    }
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    ManmaruProgressBar(value: progress(of: context.state), height: 8)
+                    Text("あと \(max(context.state.exToNextLevel, 0)) EX · \(context.state.tasksDone)/\(context.state.tasksTotal) できた")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(ManmaruPalette.caption)
                 }
-                Spacer()
-                Text("タスク \(context.state.tasksDone)/\(context.state.tasksTotal)")
-                    .font(.caption)
             }
-            .padding()
-            .activityBackgroundTint(Color.orange.opacity(0.15))
-            .activitySystemActionForegroundColor(Color.primary)
+            .foregroundStyle(.white)
+            .manmaruCard()
+            .padding(8)
+            .activityBackgroundTint(ManmaruPalette.background)
+            .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             DynamicIsland {
-                // 広げた表示：キャラ＋レベル＋EXバー＋今日のタスクの進み具合
                 DynamicIslandExpandedRegion(.leading) {
-                    WidgetCharacterView(stage: context.attributes.stage, size: 48)
+                    ManmaruCharacterImage(level: context.state.level, size: 52)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Text("Lv \(context.state.level)")
-                        .font(.headline)
+                    Text("Lv.\(context.state.level)")
+                        .font(.system(size: 26, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.white)
                 }
                 DynamicIslandExpandedRegion(.center) {
-                    VStack(spacing: 4) {
-                        ProgressView(value: progress(of: context.state))
-                        Text("タスク \(context.state.tasksDone) / \(context.state.tasksTotal)")
-                            .font(.caption)
-                        moodText(for: context.state.mood)
-                            .font(.caption)
+                    VStack(spacing: 5) {
+                        Text(ManmaruStage.name(level: context.state.level))
+                            .foregroundStyle(ManmaruPalette.yellow)
+                        Text("\(context.state.tasksDone)/\(context.state.tasksTotal) できた")
+                            .foregroundStyle(.white)
+                        Text(moodText(for: context.state.mood))
+                            .foregroundStyle(ManmaruPalette.caption)
                     }
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    Text("\(context.state.totalEx) EX ・ \(context.state.exInLevel) / \(exNeeded(of: context.state)) EX")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(spacing: 6) {
+                        ManmaruProgressBar(value: progress(of: context.state), height: 8)
+                        Text("\(context.state.exInLevel) / \(exNeeded(of: context.state)) EX · 合計 \(context.state.totalEx) EX")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(ManmaruPalette.caption)
+                    }
                 }
             } compactLeading: {
-                // 島の小さい表示：キャラ
-                WidgetCharacterView(stage: context.attributes.stage, size: 22)
+                ManmaruCharacterImage(level: context.state.level, size: 22)
             } compactTrailing: {
-                Text("Lv\(context.state.level)")
-                    .font(.caption)
-                    .fontWeight(.bold)
+                Text("Lv.\(context.state.level)")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(ManmaruPalette.yellow)
             } minimal: {
-                WidgetCharacterView(stage: context.attributes.stage, size: 22)
+                ManmaruCharacterImage(level: context.state.level, size: 22)
             }
-            .keylineTint(Color.orange)
+            .keylineTint(ManmaruPalette.yellow)
         }
     }
 
-    // JSONの exToNextLevel は「残り」なので、合計は exInLevel + exToNextLevel。
     private func exNeeded(of state: ManmaruAttributes.ContentState) -> Int {
         state.exInLevel + state.exToNextLevel
     }
@@ -77,18 +80,12 @@ struct ManmaruLiveActivityWidget: Widget {
         return min(max(Double(state.exInLevel) / Double(needed), 0), 1)
     }
 
-    // mood で島の表示を変える
-    @ViewBuilder
-    private func moodText(for mood: String) -> some View {
+    private func moodText(for mood: String) -> String {
         switch mood {
-        case "sleep":
-            Text("Zzz… 寝てるよ")
-        case "run":
-            Text("走ってるよ →")
-        case "peek":
-            Text("！ ひょっこり")
-        default:
-            Text("待ってるよ")
+        case "sleep": return "Zzz… 休憩中だよ"
+        case "run": return "いっしょに進もう！"
+        case "peek": return "ひょっこり！"
+        default: return "待ってるよ"
         }
     }
 }

@@ -9,226 +9,252 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 16) {
-                    if !store.hasURL {
-                        // URLが未設定のとき
-                        VStack(spacing: 12) {
-                            CharacterImageView(stage: 1, size: 120)
-                            Text("設定でURLを貼ってね")
-                                .font(.headline)
-                            Text("トラッカーの widget.json のURLを\n設定画面で貼ると、まんまるが動き出すよ。")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                            Button("設定へ行く") { showSettings = true }
-                                .buttonStyle(.borderedProminent)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 32)
-                    } else if let feed = store.feed {
-                        // 遊び場（画面上部の広めのエリア）
-                        CharacterPlaygroundView(stage: feed.stage)
-
-                        // レベルとEX
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Lv \(feed.level)")
-                                    .font(.largeTitle)
-                                    .fontWeight(.bold)
-                                Text(feed.stageName)
-                                    .font(.headline)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(Color.orange.opacity(0.2))
-                                    .clipShape(Capsule())
-                                Spacer()
-                                Text("\(feed.totalEx) EX")
-                                    .font(.headline)
-                            }
-                            ProgressView(value: feed.progress)
-                            HStack {
-                                Text("次のレベルまで あと \(feed.exRemaining) EX")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                Text("\(feed.exInLevel) / \(feed.exNeeded) EX")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding()
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-
-                        // なつき度
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("なつき度")
-                                    .font(.headline)
-                                Spacer()
-                                Text("\(feed.friendship) / 255")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            ProgressView(value: feed.friendshipProgress)
-                                .tint(.pink)
-                        }
-                        .padding()
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-
-                        // パラメータ5つ
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("パラメータ")
-                                .font(.headline)
-                            ForEach(feed.parameters) { param in
-                                HStack {
-                                    Text(param.label)
-                                        .fontWeight(.semibold)
-                                        .frame(width: 28, alignment: .leading)
-                                    Text("Lv \(param.level)")
-                                    Spacer()
-                                    Text("\(param.totalEx) EX")
-                                        .foregroundStyle(.secondary)
-                                }
-                                .font(.subheadline)
-                            }
-                        }
-                        .padding()
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-
-                        // 今日のタスク
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("今日のタスク")
-                                    .font(.headline)
-                                Spacer()
-                                Text("\(feed.tasksDone) / \(feed.tasksTotal)")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            ForEach(feed.tasks) { task in
-                                HStack(spacing: 10) {
-                                    Image(systemName: task.done ? "checkmark.circle.fill" : "circle")
-                                        .foregroundStyle(task.done ? Color.green : Color.gray)
-                                    Text(task.name)
-                                        .strikethrough(task.done)
-                                        .foregroundStyle(task.done ? .secondary : .primary)
-                                    Spacer()
-                                    Text("\(task.points) EX")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .font(.subheadline)
-                            }
-                        }
-                        .padding()
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-
+                VStack(spacing: 18) {
+                    if let feed = store.feed {
+                        CharacterPlaygroundView(feed: feed, justLeveledUp: store.celebration != nil)
+                        levelCard(feed)
+                        friendshipCard(feed)
+                        parameterLink(feed)
+                        tasksCard(feed)
                         if let updated = store.lastUpdated {
                             Text("最終更新：\(updated.formatted(date: .abbreviated, time: .shortened))")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .foregroundStyle(ManmaruPalette.caption)
                         }
                     } else {
-                        // URLはあるけど、まだ取れていないとき
-                        VStack(spacing: 12) {
-                            CharacterImageView(stage: 1, size: 120)
-                            if store.isLoading {
-                                ProgressView("読み込み中…")
-                            } else {
-                                Text(store.errorMessage ?? "更新ボタンで取り込むよ。")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.center)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 32)
+                        welcomeCard
                     }
-
-                    // ボタン類
-                    VStack(spacing: 10) {
-                        Button {
-                            Task { await store.refresh() }
-                        } label: {
-                            Label("更新する", systemImage: "arrow.clockwise")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(store.isLoading || !store.hasURL)
-
-                        if let trackerURL = store.trackerURL {
-                            Link(destination: trackerURL) {
-                                Label("トラッカーを開く", systemImage: "safari")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                        }
-
-                        Button {
-                            toggleLiveActivity()
-                        } label: {
-                            Label(
-                                liveActivityOn ? "島からしまう" : "島にキャラを出す",
-                                systemImage: liveActivityOn ? "rectangle.compress.vertical" : "rectangle.expand.vertical"
-                            )
-                            .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-
-                        if let message = liveActivityMessage {
-                            Text(message)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                    if let error = store.errorMessage, store.hasURL {
+                        Text(error)
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(ManmaruPalette.caption)
+                            .multilineTextAlignment(.center)
                     }
+                    controls
                 }
-                .padding()
+                .padding(18)
             }
-            .refreshable {
-                await store.refresh()
-            }
+            .background(ManmaruPalette.background)
+            .refreshable { await store.refresh() }
             .navigationTitle("まんまる")
+            .toolbarBackground(ManmaruPalette.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showSettings = true } label: {
                         Image(systemName: "gearshape")
                     }
+                    .accessibilityLabel("設定")
                 }
             }
-            .sheet(isPresented: $showSettings) {
-                SettingsView()
+            .sheet(isPresented: $showSettings) { SettingsView() }
+            .onAppear { liveActivityOn = LiveActivityManager.shared.isActive }
+            .onChange(of: showSettings) { _, isPresented in
+                if !isPresented { liveActivityOn = LiveActivityManager.shared.isActive }
             }
-            .task {
-                // キャッシュが無ければ、開いたときに1回取る
-                if store.feed == nil && store.hasURL {
-                    await store.refresh()
+        }
+        .font(.system(size: 16, weight: .semibold, design: .rounded))
+        .foregroundStyle(.white)
+        .tint(ManmaruPalette.yellow)
+        .overlay {
+            if let celebration = store.celebration, !showSettings {
+                LevelUpCelebrationView(celebration: celebration) {
+                    if store.celebration?.id == celebration.id {
+                        store.celebration = nil
+                    }
                 }
+                .id(celebration.id)
+            }
+        }
+    }
+
+    private var welcomeCard: some View {
+        VStack(spacing: 18) {
+            ManmaruCharacterImage(level: 1, size: 160)
+            Text(store.hasURL ? "まんまるに会いにいこう" : "設定でURLを貼ってね")
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+            if store.isLoading {
+                ProgressView("読み込み中…")
+            } else {
+                Text(store.hasURL ? "更新ボタンで今日のデータを取り込むよ。" : "トラッカーのwidget.jsonのURLを貼ると、\nまんまるが育つよ。")
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(ManmaruPalette.caption)
+                    .multilineTextAlignment(.center)
+            }
+            Button("設定を開く") { showSettings = true }
+                .buttonStyle(.bordered)
+        }
+        .frame(maxWidth: .infinity)
+        .manmaruCard()
+    }
+
+    private func levelCard(_ feed: TrackerFeed) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Lv.\(feed.level)")
+                    .font(.system(size: 42, weight: .heavy, design: .rounded))
+                    .minimumScaleFactor(0.7)
+                Spacer()
+                Text(ManmaruStage.name(level: feed.level))
+                    .foregroundStyle(ManmaruPalette.yellow)
+            }
+            HStack {
+                Text("合計 \(feed.totalEx) EX")
+                Spacer()
+                Text("\(feed.exInLevel) / \(feed.exNeeded) EX")
+            }
+            .font(.system(size: 13, weight: .medium, design: .rounded))
+            .foregroundStyle(ManmaruPalette.caption)
+            ManmaruProgressBar(value: feed.progress, height: 12)
+            Text("次のレベルまで あと \(feed.exRemaining) EX")
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+            todayLine(feed)
+            if feed.todayMinusEx > 0 {
+                Text("きょうのマイナス: -\(feed.todayMinusEx) EX")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(ManmaruPalette.pink)
+            }
+        }
+        .manmaruCard()
+    }
+
+    private func todayLine(_ feed: TrackerFeed) -> some View {
+        (Text("きょう: ")
+            + Text("+\(feed.todayPlusEx) EX").foregroundColor(ManmaruPalette.green)
+            + Text(" (\(feed.tasksDone)/\(feed.tasksTotal) できた)"))
+            .font(.system(size: 15, weight: .bold, design: .rounded))
+    }
+
+    private func friendshipCard(_ feed: TrackerFeed) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("なつき度 \(feed.friendship) / 255")
+                .font(.system(size: 17, weight: .bold, design: .rounded))
+            ManmaruProgressBar(value: feed.friendshipProgress, tint: ManmaruPalette.pink)
+        }
+        .manmaruCard()
+    }
+
+    private func parameterLink(_ feed: TrackerFeed) -> some View {
+        NavigationLink {
+            ParameterScreen()
+        } label: {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text("パラメータ・スキル")
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(ManmaruPalette.yellow)
+                }
+                ForEach(feed.parameters.indices, id: \.self) { index in
+                    let parameter = feed.parameters[index]
+                    HStack {
+                        Text(parameter.label.isEmpty ? feed.parameterLabel(for: parameter.key) : parameter.label)
+                            .frame(minWidth: 28, alignment: .leading)
+                        Text("Lv.\(parameter.level)")
+                        Spacer()
+                        Text("\(parameter.totalEx) EX")
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(ManmaruPalette.caption)
+                    }
+                }
+                Text("金スキルと技を見てみよう")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(ManmaruPalette.caption)
+            }
+            .manmaruCard()
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func tasksCard(_ feed: TrackerFeed) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("今日のタスク")
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                Spacer()
+                Text("\(feed.tasksDone) / \(feed.tasksTotal)")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(ManmaruPalette.caption)
+            }
+            ForEach(feed.tasks.indices, id: \.self) { index in
+                let task = feed.tasks[index]
+                HStack(spacing: 12) {
+                    Image(systemName: task.done ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 22))
+                        .foregroundStyle(task.done ? ManmaruPalette.green : ManmaruPalette.caption)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(task.name.isEmpty ? "タスク" : task.name)
+                            .strikethrough(task.done)
+                            .foregroundStyle(task.done ? ManmaruPalette.caption : Color.white)
+                        HStack(spacing: 8) {
+                            Text(feed.parameterLabel(for: task.parameter))
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 3)
+                                .background(ManmaruPalette.border)
+                                .clipShape(Capsule())
+                            Text("\(task.points) EX")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .foregroundStyle(ManmaruPalette.yellow)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityValue(task.done ? "完了" : "未完了")
+            }
+            if feed.tasks.isEmpty {
+                Text("今日のタスクはまだないよ。")
+                    .foregroundStyle(ManmaruPalette.caption)
+            }
+        }
+        .manmaruCard()
+    }
+
+    private var controls: some View {
+        VStack(spacing: 12) {
+            Button {
+                Task { await store.refresh() }
+            } label: {
+                Label(store.isLoading ? "更新中…" : "更新する", systemImage: "arrow.clockwise")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(store.isLoading || !store.hasURL)
+
+            if let trackerURL = store.trackerURL {
+                Link(destination: trackerURL) {
+                    Label("トラッカーを開く", systemImage: "safari")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Button { toggleLiveActivity() } label: {
+                Label(liveActivityOn ? "島からしまう" : "島にキャラを出す", systemImage: "sparkles")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(store.feed == nil && !liveActivityOn)
+
+            if let message = liveActivityMessage {
+                Text(message)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(ManmaruPalette.caption)
             }
         }
     }
 
     private func toggleLiveActivity() {
-        guard let feed = store.feed else {
-            liveActivityMessage = "まずデータを取ってね。"
-            return
-        }
-        if liveActivityOn {
+        if LiveActivityManager.shared.isActive {
             LiveActivityManager.shared.stop()
             liveActivityOn = false
             liveActivityMessage = "島からしまったよ。"
-        } else {
+        } else if let feed = store.feed {
             let ok = LiveActivityManager.shared.start(feed: feed)
             liveActivityOn = ok
             liveActivityMessage = ok ? "島に出したよ。8時間で終わるよ。" : "島に出せなかったよ。"
         }
     }
-}
-
-#Preview {
-    ContentView()
-        .environmentObject(TrackerStore())
 }

@@ -2,38 +2,27 @@ import WidgetKit
 import SwiftUI
 import AppIntents
 
-// MARK: - ウィジェットの設定（AppIntent）
-// 無料のApple IDだと App Groups が使えない場合がある。
-// そのときは App Group のキャッシュが読めないので、
-// ここに widget.json のURLを直接貼ると、ウィジェット自身が取りに行く。
-// 優先順位：
-//   1. App Group のキャッシュJSON（アプリが保存したもの）
-//   2. ここのURLから直接取得
-//   3. どちらも無ければ「URLを設定してね」
+// App Groupが共有できないときも、このURLから直接取得できる。
 struct ManmaruConfigurationIntent: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "まんまるの設定"
-    static var description = IntentDescription("widget.json のURLを貼ると、App Groups が使えないときでも動くよ。")
+    static var description = IntentDescription("widget.jsonのURLを貼ると、ウィジェットが直接データを取得するよ。")
 
-    @Parameter(title: "JSONのURL", description: "widget.json のURL。空っぽでもOK（そのときはアプリのキャッシュを使うよ）。", default: "")
+    @Parameter(title: "JSONのURL", description: "空欄なら、アプリに保存したURLとキャッシュを使うよ。", default: "")
     var jsonUrl: String
 }
 
-// MARK: - エントリー
 struct ManmaruEntry: TimelineEntry {
     var date: Date
     var feed: TrackerFeed?
     var trackerURL: URL?
 }
 
-// MARK: - プロバイダ
-// AppIntentConfiguration を使うので、IntentTimelineProvider ではなく
-// AppIntentTimelineProvider にする（古い方だとビルドが通らない）。
 struct ManmaruProvider: AppIntentTimelineProvider {
     typealias Entry = ManmaruEntry
     typealias Intent = ManmaruConfigurationIntent
 
     func placeholder(in context: Context) -> ManmaruEntry {
-        ManmaruEntry(date: Date(), feed: nil, trackerURL: nil)
+        ManmaruEntry(date: Date(), feed: TrackerFeed(), trackerURL: nil)
     }
 
     func snapshot(for configuration: ManmaruConfigurationIntent, in context: Context) async -> ManmaruEntry {
@@ -42,266 +31,220 @@ struct ManmaruProvider: AppIntentTimelineProvider {
 
     func timeline(for configuration: ManmaruConfigurationIntent, in context: Context) async -> Timeline<ManmaruEntry> {
         let entry = await loadEntry(configuration: configuration)
-        // 15分ごとに更新する
-        let next = Date().addingTimeInterval(15 * 60)
+        let next = TrackerURLs.nextWidgetRefresh(after: Date())
         return Timeline(entries: [entry], policy: .after(next))
     }
 
     private func loadEntry(configuration: ManmaruConfigurationIntent) async -> ManmaruEntry {
-        // 1. App Group のキャッシュJSONを読む
-        if let data = AppGroup.defaults?.data(forKey: AppGroup.cachedJsonKey),
-           let feed = try? JSONDecoder().decode(TrackerFeed.self, from: data) {
-            return ManmaruEntry(date: Date(), feed: feed, trackerURL: cachedTrackerURL())
-        }
+        let configuredURL = configuration.jsonUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sharedURL = (AppGroup.defaults?.string(forKey: AppGroup.widgetJsonUrlKey) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let source = configuredURL.isEmpty ? sharedURL : configuredURL
+        let trackerURL = source.isEmpty ? cachedTrackerURL() : TrackerURLs.trackerURL(from: source)
+        let cacheKey = "widgetFeedCache." + source
+        let usesSharedSource = configuredURL.isEmpty || configuredURL == sharedURL
 
-        // 2. キャッシュが無ければ、設定のURLから直接取りに行く
-        let urlString = configuration.jsonUrl.trimmingCharacters(in: .whitespaces)
-        if !urlString.isEmpty, let url = URL(string: urlString) {
+        // URLごとのキャッシュを持ち、別のウィジェットのデータと混ぜない。
+        let localData = source.isEmpty ? nil : UserDefaults.standard.data(forKey: cacheKey)
+        let sharedData = usesSharedSource ? AppGroup.defaults?.data(forKey: AppGroup.cachedJsonKey) : nil
+        let cachedFeed = decode(sharedData) ?? decode(localData)
+
+        // キャッシュがあっても、まず新しいJSONを取得する。
+        if let url = TrackerURLs.feedURL(from: source) {
             do {
-                let (data, response) = try await URLSession.shared.data(from: url)
-                if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                    return ManmaruEntry(date: Date(), feed: nil, trackerURL: nil)
+                let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                    throw URLError(.badServerResponse)
                 }
                 let feed = try JSONDecoder().decode(TrackerFeed.self, from: data)
-                return ManmaruEntry(
-                    date: Date(),
-                    feed: feed,
-                    trackerURL: TrackerURLs.trackerURL(from: urlString)
-                )
-            } catch {
-                return ManmaruEntry(date: Date(), feed: nil, trackerURL: nil)
-            }
-        }
-
-        // 3. どちらも無ければ空っぽ
-        return ManmaruEntry(date: Date(), feed: nil, trackerURL: nil)
-    }
-
-    /// App Group に保存してあるトラッカーのURL。無ければJSONのURLから作る。
-    private func cachedTrackerURL() -> URL? {
-        if let saved = AppGroup.defaults?.string(forKey: AppGroup.trackerUrlKey),
-           !saved.isEmpty, let url = URL(string: saved) {
-            return url
-        }
-        let jsonURL = AppGroup.defaults?.string(forKey: AppGroup.widgetJsonUrlKey) ?? ""
-        return TrackerURLs.trackerURL(from: jsonURL)
-    }
-}
-
-// MARK: - キャラ画像（ウィジェット用）
-// バンドルの "stage1" / "stage2" / "stage3" を使う。無ければ描く。
-struct WidgetCharacterView: View {
-    var stage: Int
-    var size: CGFloat
-
-    var body: some View {
-        Group {
-            if let uiImage = UIImage(named: "stage\(stage)") {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFill()
-            } else if let uiImage = UIImage(named: "stage1") {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                // フォールバック：白い丸＋点の目＋笑った口
-                ZStack {
-                    Circle().fill(Color.white)
-                    HStack(spacing: 22) {
-                        Circle().fill(Color.black).frame(width: 8, height: 10)
-                        Circle().fill(Color.black).frame(width: 8, height: 10)
-                    }
-                    .offset(y: -4)
-                    Path { path in
-                        path.move(to: CGPoint(x: 0, y: 0))
-                        path.addQuadCurve(to: CGPoint(x: 20, y: 0), control: CGPoint(x: 10, y: 14))
-                    }
-                    .stroke(Color.black, lineWidth: 3)
-                    .frame(width: 20, height: 14)
-                    .offset(y: 12)
+                UserDefaults.standard.set(data, forKey: cacheKey)
+                if usesSharedSource {
+                    AppGroup.defaults?.set(data, forKey: AppGroup.cachedJsonKey)
                 }
+                return ManmaruEntry(date: Date(), feed: feed, trackerURL: trackerURL)
+            } catch {
+                // 通信できないときは、保存済みのデータを表示する。
             }
         }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
+        return ManmaruEntry(date: Date(), feed: cachedFeed, trackerURL: trackerURL)
+    }
+
+    private func decode(_ data: Data?) -> TrackerFeed? {
+        guard let data else { return nil }
+        return try? JSONDecoder().decode(TrackerFeed.self, from: data)
+    }
+
+    private func cachedTrackerURL() -> URL? {
+        guard let saved = AppGroup.defaults?.string(forKey: AppGroup.trackerUrlKey), !saved.isEmpty else { return nil }
+        return URL(string: saved)
     }
 }
 
-// MARK: - ウィジェットの見た目
 struct ManmaruWidgetEntryView: View {
     @Environment(\.widgetFamily) private var family
     var entry: ManmaruEntry
 
+    private var isSystemWidget: Bool { family == .systemSmall || family == .systemMedium }
+
     var body: some View {
         Group {
             switch family {
-            case .accessoryCircular:
-                accessoryCircular
-            case .accessoryRectangular:
-                accessoryRectangular
-            case .accessoryInline:
-                accessoryInline
-            case .systemMedium:
-                mediumView
-            default:
-                smallView
+            case .accessoryCircular: accessoryCircular
+            case .accessoryRectangular: accessoryRectangular
+            case .accessoryInline: accessoryInline
+            case .systemMedium: mediumView
+            default: smallView
             }
         }
-        // タップでトラッカーを開く
+        .font(.system(size: 13, weight: .bold, design: .rounded))
+        .foregroundStyle(.white)
+        .padding(isSystemWidget ? 14 : 0)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay {
+            if isSystemWidget {
+                RoundedRectangle(cornerRadius: 24)
+                    .strokeBorder(ManmaruPalette.border, lineWidth: 2)
+            }
+        }
         .widgetURL(entry.trackerURL)
     }
 
-    // 小サイズ：キャラ画像＋レベル＋EXバー
     private var smallView: some View {
         Group {
             if let feed = entry.feed {
-                VStack(spacing: 6) {
-                    WidgetCharacterView(stage: feed.stage, size: 64)
-                    Text("Lv \(feed.level)")
-                        .font(.headline)
-                    ProgressView(value: feed.progress)
-                    Text("\(feed.exInLevel) / \(feed.exNeeded) EX")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 8) {
+                        ManmaruCharacterImage(level: feed.level, size: 50)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Lv.\(feed.level)")
+                                .font(.system(size: 26, weight: .heavy, design: .rounded))
+                                .minimumScaleFactor(0.7)
+                                .lineLimit(1)
+                            Text(ManmaruStage.name(level: feed.level))
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(ManmaruPalette.caption)
+                        }
+                    }
+                    ManmaruProgressBar(value: feed.progress, height: 6)
+                    Text("あと \(feed.exRemaining) EX")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(ManmaruPalette.caption)
+                    Text("なつき度 \(feed.friendship) / 255")
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                    ManmaruProgressBar(value: feed.friendshipProgress, tint: ManmaruPalette.pink, height: 4)
+                    todayText(feed)
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
-                .padding()
-            } else {
-                emptyView
-            }
+            } else { emptyView }
         }
     }
 
-    // 中サイズ：小サイズ＋今日のタスク（終わった数／全部）
     private var mediumView: some View {
         Group {
             if let feed = entry.feed {
-                HStack(spacing: 12) {
-                    WidgetCharacterView(stage: feed.stage, size: 72)
+                HStack(spacing: 14) {
+                    ManmaruCharacterImage(level: feed.level, size: 96)
                     VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text("Lv \(feed.level)")
-                                .font(.headline)
-                            Text(feed.stageName)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text("\(feed.totalEx) EX")
-                                .font(.subheadline)
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text("Lv.\(feed.level)")
+                                .font(.system(size: 34, weight: .heavy, design: .rounded))
+                            Text(ManmaruStage.name(level: feed.level))
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundStyle(ManmaruPalette.caption)
                         }
-                        ProgressView(value: feed.progress)
-                        Text("今日のタスク \(feed.tasksDone) / \(feed.tasksTotal)")
-                            .font(.subheadline)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        ManmaruProgressBar(value: feed.progress, height: 8)
+                        Text("\(feed.exInLevel) / \(feed.exNeeded) EX · あと\(feed.exRemaining)")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(ManmaruPalette.caption)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                         Text("なつき度 \(feed.friendship) / 255")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                        ManmaruProgressBar(value: feed.friendshipProgress, tint: ManmaruPalette.pink, height: 5)
+                        todayText(feed)
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                     }
                 }
-                .padding()
-            } else {
-                emptyView
-            }
+            } else { emptyView }
         }
     }
 
-    // ロック画面：丸（キャラ＋レベル）
+    private func todayText(_ feed: TrackerFeed) -> Text {
+        Text("+\(feed.todayPlusEx) EX").foregroundColor(ManmaruPalette.green)
+            + Text(" (\(feed.tasksDone)/\(feed.tasksTotal) できた)")
+    }
+
     private var accessoryCircular: some View {
-        Group {
-            if let feed = entry.feed {
-                ZStack {
-                    WidgetCharacterView(stage: feed.stage, size: 56)
-                    Text("Lv\(feed.level)")
-                        .font(.caption2)
-                        .fontWeight(.bold)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.black.opacity(0.6))
-                        .foregroundStyle(.white)
-                        .clipShape(Capsule())
-                        .offset(y: 24)
-                }
-            } else {
-                Image(systemName: "circle.dashed")
-            }
+        VStack(spacing: 1) {
+            ManmaruCharacterImage(level: entry.feed?.level ?? 1, size: 36)
+            Text("Lv.\(entry.feed?.level ?? 1)")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
         }
     }
 
-    // ロック画面：長方形（レベル＋EX）
     private var accessoryRectangular: some View {
         Group {
             if let feed = entry.feed {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("まんまる Lv \(feed.level)")
-                        .font(.headline)
-                    Text("\(feed.exInLevel) / \(feed.exNeeded) EX")
-                        .font(.subheadline)
-                    ProgressView(value: feed.progress)
+                HStack(spacing: 6) {
+                    ManmaruCharacterImage(level: feed.level, size: 38)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Lv.\(feed.level)")
+                        ManmaruProgressBar(value: feed.progress, height: 5)
+                        Text("あと \(feed.exRemaining) EX")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                    }
                 }
-            } else {
-                Text("URLを設定してね")
-                    .font(.subheadline)
-            }
+            } else { Text("URLを設定してね") }
         }
     }
 
-    // ロック画面：インライン（1行）
     private var accessoryInline: some View {
         Group {
             if let feed = entry.feed {
-                Text("Lv\(feed.level)・\(feed.totalEx)EX")
-            } else {
-                Text("まんまる")
-            }
+                Text("Lv.\(feed.level) · \(feed.totalEx) EX")
+            } else { Text("まんまる · URLを設定してね") }
         }
     }
 
-    // キャッシュもURLも無いとき
     private var emptyView: some View {
         VStack(spacing: 8) {
-            WidgetCharacterView(stage: 1, size: 56)
+            ManmaruCharacterImage(level: 1, size: 50)
             Text("URLを設定してね")
-                .font(.subheadline)
                 .multilineTextAlignment(.center)
             Text("長押し → ウィジェットを編集")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(ManmaruPalette.caption)
+                .multilineTextAlignment(.center)
         }
-        .padding()
     }
 }
 
-// MARK: - ウィジェット本体
 struct ManmaruWidget: Widget {
-    let kind: String = "ManmaruWidget"
+    let kind = "ManmaruWidget"
 
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: kind, intent: ManmaruConfigurationIntent.self, provider: ManmaruProvider()) { entry in
             ManmaruWidgetEntryView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .containerBackground(ManmaruPalette.card, for: .widget)
         }
+        .contentMarginsDisabled()
         .configurationDisplayName("まんまる")
         .description("レベル・EX・今日のタスクを見るよ。")
-        .supportedFamilies([
-            .systemSmall,
-            .systemMedium,
-            .accessoryCircular,
-            .accessoryRectangular,
-            .accessoryInline
-        ])
+        .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular, .accessoryRectangular, .accessoryInline])
     }
 }
 
-// MARK: - ウィジェットの束ね役
 @main
 struct ManmaruWidgetBundle: WidgetBundle {
     var body: some Widget {
         ManmaruWidget()
         ManmaruLiveActivityWidget()
     }
-}
-
-#Preview(as: .systemSmall) {
-    ManmaruWidget()
-} timeline: {
-    ManmaruEntry(date: Date(), feed: nil, trackerURL: nil)
 }

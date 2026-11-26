@@ -42,8 +42,8 @@ jobs:
           EP=$(plutil -extract NSExtension.NSExtensionPointIdentifier raw "$WPL")
           echo "NSExtensionPointIdentifier: $EP"
           test "$EP" = "com.apple.widgetkit-extension" || { echo "ERROR: NSExtension がない"; exit 1; }
-          test "$(plutil -extract CFBundleIdentifier raw "$APPPL")" = "com.shugo.manmaru"
-          test "$(plutil -extract CFBundleIdentifier raw "$WPL")" = "com.shugo.manmaru.widget"
+          test "$(plutil -extract CFBundleIdentifier raw "$APPPL")" = "com.shugo.manmaruapp"
+          test "$(plutil -extract CFBundleIdentifier raw "$WPL")" = "com.shugo.manmaruapp.widget"
           echo "OK: ウィジェット入り"
           test -f Payload/Manmaru.app/Assets.car || { echo "ERROR: アプリに画像（Assets.car）がない"; exit 1; }
           test -f Payload/Manmaru.app/PlugIns/ManmaruWidget.appex/Assets.car || { echo "ERROR: ウィジェットに画像（Assets.car）がない"; exit 1; }
@@ -51,5 +51,5 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Manmaru-unsigned-v4
+          name: Manmaru-unsigned-v5
           path: Manmaru-unsigned.ipa
